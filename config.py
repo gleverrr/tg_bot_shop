@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
-
+    SECOND_BOT_TOKEN = os.getenv('SECOND_BOT_TOKEN')  # Новый токен для второго бота  
     BOT_TOKEN = os.getenv('BOT_TOKEN')
     DATABASE_URL = os.getenv('DATABASE_URL')
     CHANNEL_LINK = os.getenv('CHANNEL_LINK')

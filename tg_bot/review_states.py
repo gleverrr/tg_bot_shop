@@ -6,6 +6,7 @@ class ReviewStates(StatesGroup):
     condition = State()
     price = State()
     hallmark = State()
+    city = State()
     additional_info = State()
     contacts = State()
     media = State()
@@ -16,6 +17,7 @@ class ReviewStates(StatesGroup):
     edit_condition = State()  # Для редактирования состояния
     edit_price = State()  # Для редактирования цены
     edit_hallmark = State()  # Для редактирования пробы
+    edit_city = State()
     edit_additional_info = State()  # Для редактирования дополнительной информации
     edit_contacts = State()  # Для редактирования контактов
     edit_confirmation = State()  # Для подтверждения редактирования

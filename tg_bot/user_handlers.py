@@ -78,6 +78,14 @@ async def process_price(message: Message, state: FSMContext):
 
 async def process_hallmark(message: Message, state: FSMContext):
     await state.update_data(hallmark=message.text)
+    await message.answer("Город (можно не указывать):", reply_markup=ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="не указан")]],
+        resize_keyboard=True
+    ))
+    await state.set_state(ReviewStates.city)
+
+async def process_city(message: Message, state: FSMContext):
+    await state.update_data(city=message.text)
     await message.answer("Дополнительная информация (например, материал, вставки, бренд и т.п.):", reply_markup=ReplyKeyboardRemove())
     await state.set_state(ReviewStates.additional_info)
 
@@ -150,6 +158,7 @@ async def process_media(message: Message, state: FSMContext, bot: Bot):
             f"Состояние: {data['condition']}\n"
             f"Цена: {data['price']}\n"
             f"Проба: {data.get('hallmark', 'нет')}\n"
+            f"Город: {data.get('city', 'не указан')}\n"
             f"Дополнительная информация: {data['additional_info']}\n"
             f"Контакты: {data['contacts']}"
         )
@@ -209,6 +218,7 @@ async def process_confirmation(message: Message, state: FSMContext, bot: Bot):
                     f"Состояние: {data['condition']}\n"
                     f"Цена: {data['price']}\n"
                     f"Проба: {data.get('hallmark', 'нет')}\n"
+                    f"Город: {data.get('city', 'не указан')}\n"  
                     f"Дополнительная информация: {data['additional_info']}\n"
                     f"Контакты: {data['contacts']}"
                 )
@@ -231,6 +241,7 @@ async def process_confirmation(message: Message, state: FSMContext, bot: Bot):
             condition=data["condition"],
             price=data["price"],
             hallmark=data.get("hallmark", "нет"),
+            city = data.get('city', 'нет'),
             additional_info=data["additional_info"],
             contacts=data["contacts"],
             media_ids=",".join(media_ids),
@@ -243,7 +254,8 @@ async def process_confirmation(message: Message, state: FSMContext, bot: Bot):
         try:
             await bot.send_message(
                 Config.ADMIN_IDS[0],
-                f"Новое объявление от @{message.from_user.username}"
+                f"Новое объявление от @{message.from_user.username}\n"
+                f"User_id: {message.from_user.id}"
             )
         except Exception as e:
             logger.error(f"Ошибка при отправке сообщения администратору: {e}")
@@ -281,7 +293,7 @@ async def process_confirmation(message: Message, state: FSMContext, bot: Bot):
 
         # Уведомляем пользователя
         await message.answer(
-            "   о на проверку администратору. Ожидайте подтверждения.",
+            "Отправлено на проверку администратору. Ожидайте подтверждения.",
             reply_markup=get_main_keyboard()
         )
         await state.clear()
@@ -322,6 +334,7 @@ async def handle_admin_decision(callback: types.CallbackQuery, bot: Bot, state: 
                     f"Состояние: {order.condition}\n"
                     f"Цена: {order.price}\n"
                     f"Проба: {order.hallmark}\n"
+                    f"Город: {order.city}\n"
                     f"Дополнительная информация: {order.additional_info}\n"
                     f"Контакты: {order.contacts}\n"
                     f"#ID{order.id}"    
@@ -688,6 +701,44 @@ async def process_edit_hallmark(message: Message, state: FSMContext):
 
     # Переходим к следующему шагу (редактирование дополнительной информации)
     await message.answer(
+        f"Текущий город: {order.city}\n"
+        "Введите актуальную информацию или нажмите 'Оставить без изменений':",
+        reply_markup=ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="Оставить без изменений")],
+                [KeyboardButton(text="не указан")]
+                ],
+            resize_keyboard=True
+        )
+    )
+    await state.set_state(ReviewStates.edit_city)
+
+
+
+
+async def process_edit_city(message: Message, state: FSMContext):
+    data = await state.get_data()
+    order_id = data.get("order_id")
+
+    session = get_db_session()
+    order = session.query(Order).filter(Order.id == order_id).first()
+
+    if not order:
+        await message.answer("Ошибка: заказ не найден. Начните заново.", reply_markup=get_main_keyboard())
+        await state.clear()
+        return
+
+    if message.text == "Оставить без изменений":
+        # Берем данные из базы данных
+        await state.update_data(city=order.city)
+        await message.answer("Город остался без изменений.")
+    else:
+        # Обновляем данные в состоянии
+        await state.update_data(city=message.text)
+        await message.answer("Город изменен.")
+
+    # Переходим к следующему шагу (редактирование дополнительной информации)
+    await message.answer(
         f"Текущая дополнительная информация: {order.additional_info}\n"
         "Введите новую дополнительную информацию или нажмите 'Оставить без изменений':",
         reply_markup=ReplyKeyboardMarkup(
@@ -696,6 +747,10 @@ async def process_edit_hallmark(message: Message, state: FSMContext):
         )
     )
     await state.set_state(ReviewStates.edit_additional_info)
+
+
+
+
 async def process_edit_additional_info(message: Message, state: FSMContext):
     data = await state.get_data()
     order_id = data.get("order_id")
@@ -756,6 +811,7 @@ async def process_edit_contacts(message: Message, state: FSMContext):
         f"Состояние: {data.get('condition', order.condition)}\n"
         f"Цена: {data.get('price', order.price)}\n"
         f"Проба: {data.get('hallmark', order.hallmark)}\n"
+        f"Город: {data.get('city', order.city)}\n"
         f"Дополнительная информация: {data.get('additional_info', order.additional_info)}\n"
         f"Контакты: {data.get('contacts', order.contacts)}\n"
         f"#ID{order.id}"
@@ -787,6 +843,7 @@ async def process_edit_confirmation(message: Message, state: FSMContext, bot: Bo
         order.condition = data.get("condition", order.condition)
         order.price = data.get("price", order.price)
         order.hallmark = data.get("hallmark", order.hallmark)
+        order.city = data.get("city", order.city)
         order.additional_info = data.get("additional_info", order.additional_info)
         order.contacts = data.get("contacts", order.contacts)
 
@@ -798,6 +855,7 @@ async def process_edit_confirmation(message: Message, state: FSMContext, bot: Bo
             f"Состояние: {order.condition}\n"
             f"Цена: {order.price}\n"
             f"Проба: {order.hallmark}\n"
+            f"Город: {order.city}\n"
             f"Дополнительная информация: {order.additional_info}\n"
             f"Контакты: {order.contacts}\n"
             f"#ID{order.id}"
@@ -858,6 +916,7 @@ def register_user_handlers(dp):
     dp.message.register(process_condition, ReviewStates.condition)
     dp.message.register(process_price, ReviewStates.price)
     dp.message.register(process_hallmark, ReviewStates.hallmark)
+    dp.message.register(process_city, ReviewStates.city)
     dp.message.register(process_additional_info, ReviewStates.additional_info)
     dp.message.register(process_contacts, ReviewStates.contacts)
     dp.message.register(process_media, ReviewStates.media)
@@ -872,10 +931,10 @@ def register_user_handlers(dp):
     dp.message.register(process_edit_condition, ReviewStates.edit_condition)
     dp.message.register(process_edit_price, ReviewStates.edit_price)
     dp.message.register(process_edit_hallmark, ReviewStates.edit_hallmark)
+    dp.message.register(process_edit_city, ReviewStates.edit_city)
     dp.message.register(process_edit_additional_info, ReviewStates.edit_additional_info)
     dp.message.register(process_edit_contacts, ReviewStates.edit_contacts)
     dp.message.register(process_edit_confirmation, ReviewStates.edit_confirmation)
-
     # Обработчик для неизвестных сообщений
     dp.message.register(unknown_message)
 

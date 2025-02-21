@@ -110,6 +110,7 @@ async def process_confirmation(message: types.Message, state: FSMContext):
                 ]
             )
 
+            session = None
             try:
                 # Отправка сообщения в канал с кнопкой
                 channel_message = await bot.send_message(
@@ -140,6 +141,9 @@ async def process_confirmation(message: types.Message, state: FSMContext):
                 await state.set_state(RaffleStates.raffle_active)  # Устанавливаем состояние "розыгрыш активен"
             except Exception as e:
                 await message.answer(f"Ошибка при отправке сообщения в канал: {e}")
+            finally:
+                if session:
+                    session.close()
         else:
             await message.answer("Розыгрыш отменен.", reply_markup=admin_keyboard)
             await state.clear()  # Очистка состояния
@@ -155,41 +159,51 @@ async def handle_participation(callback_query: types.CallbackQuery):
         await callback_query.answer("Задайте username в профиле для участия в розыгрыше.", show_alert=True)
         return
 
-    session = get_db_session()
+    session = None
+    try:
+        session = get_db_session()
 
-    # Получаем последний активный розыгрыш
-    active_raffle = session.query(Raffle).order_by(Raffle.id.desc()).first()
+        # Получаем последний активный розыгрыш
+        active_raffle = session.query(Raffle).order_by(Raffle.id.desc()).first()
 
-    if not active_raffle:
-        await callback_query.answer("Активных розыгрышей нет.", show_alert=True)
-        return
+        if not active_raffle:
+            await callback_query.answer("Активных розыгрышей нет.", show_alert=True)
+            return
 
-    # Проверяем, участвовал ли пользователь ранее
-    existing_participant = session.query(Raffle).filter(Raffle.user_id == user_id).first()
-    if existing_participant:
-        await callback_query.answer("Вы уже участвуете в розыгрыше!", show_alert=True)
-        return
+        # Проверяем, участвовал ли пользователь ранее
+        existing_participant = session.query(Raffle).filter(Raffle.user_id == user_id).first()
+        if existing_participant:
+            await callback_query.answer("Вы уже участвуете в розыгрыше!", show_alert=True)
+            return
 
-    # Добавляем участника в таблицу
-    new_participant = Raffle(
-        user_id=user_id,
-        telegram_tag=username,
-        channel_message_id=active_raffle.channel_message_id,
-        raffle_type=active_raffle.raffle_type,
-        raffle_message=active_raffle.raffle_message
-    )
-    session.add(new_participant)
-    session.commit()
+        # Добавляем участника в таблицу
+        new_participant = Raffle(
+            user_id=user_id,
+            telegram_tag=username,
+            channel_message_id=active_raffle.channel_message_id,
+            raffle_type=active_raffle.raffle_type,
+            raffle_message=active_raffle.raffle_message
+        )
+        session.add(new_participant)
+        session.commit()
 
-    await callback_query.answer("Вы успешно зарегистрированы в розыгрыше!", show_alert=True)
+        await callback_query.answer("Вы успешно зарегистрированы в розыгрыше!", show_alert=True)
+    finally:
+        if session:
+            session.close()
 
 # Обработка команды "Количество участников"
 @dp.message(lambda message: message.text == "Количество участников")
 async def get_participants_count(message: types.Message):
     if message.from_user.id in Config.ADMIN_IDS:  # Проверка, что пользователь — администратор
-        session = get_db_session()
-        participants_count = session.query(Raffle).filter(Raffle.user_id != None).count()
-        await message.answer(f"Количество участников: {participants_count}")
+        session = None
+        try:
+            session = get_db_session()
+            participants_count = session.query(Raffle).filter(Raffle.user_id != None).count()
+            await message.answer(f"Количество участников: {participants_count}")
+        finally:
+            if session:
+                session.close()
 
 # Обработка команды "Завершить розыгрыш"
 @dp.message(lambda message: message.text == "Завершить розыгрыш")
@@ -203,76 +217,81 @@ async def end_raffle(message: types.Message, state: FSMContext):
 async def process_end_confirmation(message: types.Message, state: FSMContext):
     if message.from_user.id in Config.ADMIN_IDS:  # Проверка, что пользователь — администратор
         if message.text == "Да":
-            session = get_db_session()
-
-            # Получаем последний активный розыгрыш
-            active_raffle = session.query(Raffle).order_by(Raffle.id.desc()).first()
-
-            if not active_raffle:
-                await message.answer("Активных розыгрышей нет.", reply_markup=raffle_management_keyboard)
-                return
-
-            # Получаем участников розыгрыша
-            participants = session.query(Raffle).filter(Raffle.user_id != None).all()
-
-            if not participants:
-                await message.answer("Нет участников для розыгрыша.", reply_markup=raffle_management_keyboard)
-                return
-
-            # Выбираем победителей
-            if active_raffle.raffle_type == "Для продавцов":
-                # Получаем активные объявления участников
-                active_orders = session.query(Order).filter(
-                    Order.user_id.in_([p.user_id for p in participants]),
-                    Order.is_active == True
-                ).all()
-
-                # Считаем количество активных объявлений для каждого участника
-                user_order_counts = {}
-                for order in active_orders:
-                    if order.user_id in user_order_counts:
-                        user_order_counts[order.user_id] += 1
-                    else:
-                        user_order_counts[order.user_id] = 1
-
-                # Формируем список участников с учетом количества активных объявлений
-                weighted_participants = []
-                for participant in participants:
-                    if participant.user_id in user_order_counts:
-                        weighted_participants.extend([participant] * user_order_counts[participant.user_id])
-
-                # Выбираем уникальных победителей
-                unique_winners = []
-                while len(unique_winners) < 10 and weighted_participants:
-                    winner = random.choice(weighted_participants)
-                    if winner.user_id not in [w.user_id for w in unique_winners]:
-                        unique_winners.append(winner)
-                    weighted_participants = [p for p in weighted_participants if p.user_id != winner.user_id]
-
-                winners = unique_winners
-            else:
-                # Выбираем случайных участников
-                winners = random.sample(participants, min(len(participants), 10))
-
-            # Формируем список победителей
-            if winners:
-                winners_list = "\n".join([f"@{winner.telegram_tag} (ID: {winner.user_id})" for winner in winners])
-                await message.answer(f"Победители:\n{winners_list}", reply_markup=admin_keyboard)
-            else:
-                await message.answer("Нет победителей.", reply_markup=admin_keyboard)
-
-            # Удаляем сообщение с розыгрышем из канала
+            session = None
             try:
-                await bot.delete_message(Config.CHANNEL_ID, active_raffle.channel_message_id)
-            except Exception as e:
-                logging.error(f"Ошибка при удалении сообщения: {e}")
+                session = get_db_session()
 
-            # Очищаем таблицу raffle
-            session.query(Raffle).delete()
-            session.commit()
+                # Получаем последний активный розыгрыш
+                active_raffle = session.query(Raffle).order_by(Raffle.id.desc()).first()
 
-            # Очищаем состояние
-            await state.clear()
+                if not active_raffle:
+                    await message.answer("Активных розыгрышей нет.", reply_markup=raffle_management_keyboard)
+                    return
+
+                # Получаем участников розыгрыша
+                participants = session.query(Raffle).filter(Raffle.user_id != None).all()
+
+                if not participants:
+                    await message.answer("Нет участников для розыгрыша.", reply_markup=raffle_management_keyboard)
+                    return
+
+                # Выбираем победителей
+                if active_raffle.raffle_type == "Для продавцов":
+                    # Получаем активные объявления участников
+                    active_orders = session.query(Order).filter(
+                        Order.user_id.in_([p.user_id for p in participants]),
+                        Order.is_active == True
+                    ).all()
+
+                    # Считаем количество активных объявлений для каждого участника
+                    user_order_counts = {}
+                    for order in active_orders:
+                        if order.user_id in user_order_counts:
+                            user_order_counts[order.user_id] += 1
+                        else:
+                            user_order_counts[order.user_id] = 1
+
+                    # Формируем список участников с учетом количества активных объявлений
+                    weighted_participants = []
+                    for participant in participants:
+                        if participant.user_id in user_order_counts:
+                            weighted_participants.extend([participant] * user_order_counts[participant.user_id])
+
+                    # Выбираем уникальных победителей
+                    unique_winners = []
+                    while len(unique_winners) < 10 and weighted_participants:
+                        winner = random.choice(weighted_participants)
+                        if winner.user_id not in [w.user_id for w in unique_winners]:
+                            unique_winners.append(winner)
+                        weighted_participants = [p for p in weighted_participants if p.user_id != winner.user_id]
+
+                    winners = unique_winners
+                else:
+                    # Выбираем случайных участников
+                    winners = random.sample(participants, min(len(participants), 10))
+
+                # Формируем список победителей
+                if winners:
+                    winners_list = "\n".join([f"@{winner.telegram_tag} (ID: {winner.user_id})" for winner in winners])
+                    await message.answer(f"Победители:\n{winners_list}", reply_markup=admin_keyboard)
+                else:
+                    await message.answer("Нет победителей.", reply_markup=admin_keyboard)
+
+                # Удаляем сообщение с розыгрышем из канала
+                try:
+                    await bot.delete_message(Config.CHANNEL_ID, active_raffle.channel_message_id)
+                except Exception as e:
+                    logging.error(f"Ошибка при удалении сообщения: {e}")
+
+                # Очищаем таблицу raffle
+                session.query(Raffle).delete()
+                session.commit()
+
+                # Очищаем состояние
+                await state.clear()
+            finally:
+                if session:
+                    session.close()
         else:
             await message.answer("Розыгрыш не завершен.", reply_markup=raffle_management_keyboard)
             await state.clear()

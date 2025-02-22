@@ -77,7 +77,7 @@ async def add_raffle(message: types.Message, state: FSMContext):
 async def process_raffle_type(message: types.Message, state: FSMContext):
     if message.from_user.id in Config.ADMIN_IDS:  # Проверка, что пользователь — администратор
         await state.update_data(raffle_type=message.text)
-        await message.answer("Пришлите сообщение для розыгрыша:", reply_markup=ReplyKeyboardRemove())
+        await message.answer("Введите количество победителей в розыгрыше:", reply_markup=ReplyKeyboardRemove())
         await state.set_state(RaffleStates.waiting_for_raffle_message)  # Установка состояния
 
 # Обработка сообщения для розыгрыша
@@ -115,7 +115,8 @@ async def process_confirmation(message: types.Message, state: FSMContext):
                 # Отправка сообщения в канал с кнопкой
                 channel_message = await bot.send_message(
                     Config.CHANNEL_ID,
-                    raffle_message,
+                    f"Количество победителей: {raffle_message}\n"
+                    f"Количество участников: 0",
                     reply_markup=participation_button
                 )
 
@@ -137,7 +138,7 @@ async def process_confirmation(message: types.Message, state: FSMContext):
                 )
                 session.add(new_raffle)
                 session.commit()
-
+                
                 await state.set_state(RaffleStates.raffle_active)  # Устанавливаем состояние "розыгрыш активен"
             except Exception as e:
                 await message.answer(f"Ошибка при отправке сообщения в канал: {e}")
@@ -186,8 +187,22 @@ async def handle_participation(callback_query: types.CallbackQuery):
         )
         session.add(new_participant)
         session.commit()
-
+        participation_button = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Принять участие", callback_data="participate")]
+                ]
+            )
+        active_raffle = session.query(Raffle).order_by(Raffle.id.desc()).first()
+        participants_count = session.query(Raffle).filter(Raffle.user_id != None).count()
+        await bot.edit_message_text(
+            chat_id=Config.CHANNEL_ID,
+            message_id= active_raffle.channel_message_id,
+            text=f"Количество победителей: {active_raffle.raffle_message}\n"
+                f"Количество участников: {participants_count}",
+            reply_markup=participation_button  # Если нужно сохранить кнопку
+        )
         await callback_query.answer("Вы успешно зарегистрированы в розыгрыше!", show_alert=True)
+        
     finally:
         if session:
             session.close()

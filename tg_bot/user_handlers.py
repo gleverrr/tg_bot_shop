@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 async def start_command(message: Message, bot: Bot):
     await message.answer(
-        f"Подпишитесь на наш канал: {Config.CHANNEL_LINK}, а также на чат для обсуждения: {Config.CHAT_LINK}.\n\n"
+        f"Подпишитесь на наш канал: {Config.CHANNEL_LINK}.\n\n"
         "Если есть вопросы, обратитесь к администратору: @BogGermes.\n\n"
         "Этот бот создан для публикации объявлений о продаже золотых изделий. "
         "Ответственность за передачу денег и товаров мы не несем.\n\n"
@@ -404,7 +404,7 @@ async def unknown_message(message: Message):
     else:
         # Сообщение для обычного пользователя
         await message.answer(
-            f"Подпишитесь на наш канал: {Config.CHANNEL_LINK}, а также на чат для обсуждения: {Config.CHAT_LINK}.\n\n"
+            f"Подпишитесь на наш канал: {Config.CHANNEL_LINK}.\n\n"
             "Если есть вопросы, обратитесь к администратору: @BogGermes.\n\n"
             "Этот бот создан для публикации объявлений о продаже золотых изделий. "
             "Ответственность за передачу денег и товаров мы не несем.\n\n"
@@ -498,7 +498,7 @@ async def unknown_message(message: Message):
     else:
         # Сообщение для обычного пользователя
         await message.answer(
-            f"Подпишитесь на наш канал: {Config.CHANNEL_LINK}, а также на чат для обсуждения: {Config.CHAT_LINK}.\n\n"
+            f"Подпишитесь на наш канал: {Config.CHANNEL_LINK}.\n\n"
             "Если есть вопросы, обратитесь к администратору: @BogGermes.\n\n"
             "Этот бот создан для публикации объявлений о продаже золотых изделий. "
             "Ответственность за передачу денег и товаров мы не несем.\n\n"

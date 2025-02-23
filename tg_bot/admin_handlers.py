@@ -26,7 +26,7 @@ async def help_command(message: Message):
         "/ban [user_id] - Заблокировать пользователя\n"
         "/unban [user_id] - Разблокировать пользователя\n"
         "/delete #номер_объявления - Удалить объявление из канала\n"
-        "@idchatwebhelbiebot - бот для получения id",
+        "@getmyid_bot - бот для получения id",
         reply_markup=get_admin_keyboard()
     )
 

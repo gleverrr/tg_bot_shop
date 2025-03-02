@@ -3,6 +3,9 @@ from aiogram.fsm.state import State, StatesGroup
 
 class ReviewStates(StatesGroup):
     product_type = State()
+    weight = State()
+    size = State()
+    insertion = State()
     condition = State()
     price = State()
     hallmark = State()
@@ -14,6 +17,9 @@ class ReviewStates(StatesGroup):
     delete_order = State()
     edit_order = State()  # Для выбора объявления для редактирования
     edit_product_type = State()  # Для редактирования типа изделия
+    edit_weight = State()
+    edit_size = State()
+    edit_insertion = State()
     edit_condition = State()  # Для редактирования состояния
     edit_price = State()  # Для редактирования цены
     edit_hallmark = State()  # Для редактирования пробы

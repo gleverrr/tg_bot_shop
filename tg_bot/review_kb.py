@@ -23,7 +23,9 @@ def get_product_type_keyboard():
             [KeyboardButton(text="Шармы")],
             [KeyboardButton(text="Броши")],
             [KeyboardButton(text="Комплекты")],
-            [KeyboardButton(text="Религиозные изделия")]
+            [KeyboardButton(text="Религиозные изделия")],
+            [KeyboardButton(text="Антиквариат")],
+            [KeyboardButton(text="Монеты")]
         ],
         resize_keyboard=True
     )

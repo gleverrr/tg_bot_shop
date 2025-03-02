@@ -48,17 +48,44 @@ async def add_product_command(message: Message, state: FSMContext):
     await message.answer("Выберите тип изделия (если не нашли нужного, введите вручную):",
                          reply_markup=get_product_type_keyboard())
     await state.set_state(ReviewStates.product_type)
-
+# async def process_product_type(message: Message, state: FSMContext):
+#     await state.update_data(product_type=message.text)
+#     await message.answer("Состояние товара", 
+#                          reply_markup=ReplyKeyboardMarkup(
+#                              keyboard=[[KeyboardButton(text="новое")],
+#                                        [KeyboardButton(text="б/у")]],
+#                              resize_keyboard=True
+#                          ))
+#     await state.set_state(ReviewStates.weight)
 async def process_product_type(message: Message, state: FSMContext):
     await state.update_data(product_type=message.text)
-    await message.answer("Состояние товара:", 
+    await message.answer("Вес товара:", reply_markup=ReplyKeyboardRemove())
+    await state.set_state(ReviewStates.weight)
+async def process_weight(message: Message, state: FSMContext):
+    await state.update_data(weight=message.text)
+    await message.answer("Размер товара:", 
+                         reply_markup=ReplyKeyboardMarkup(
+                             keyboard=[[KeyboardButton(text="не указан")]],
+                             resize_keyboard=True
+                         ))
+    await state.set_state(ReviewStates.size)    
+async def process_size(message: Message, state: FSMContext):
+    await state.update_data(size=message.text)
+    await message.answer("Вставки:", 
+                         reply_markup=ReplyKeyboardMarkup(
+                             keyboard=[[KeyboardButton(text="отсутствуют")]],
+                             resize_keyboard=True
+                         ))
+    await state.set_state(ReviewStates.insertion)
+async def process_insertion(message: Message, state: FSMContext):
+    await state.update_data(insertion=message.text)
+    await message.answer("Состояние товара", 
                          reply_markup=ReplyKeyboardMarkup(
                              keyboard=[[KeyboardButton(text="новое")],
                                        [KeyboardButton(text="б/у")]],
                              resize_keyboard=True
                          ))
     await state.set_state(ReviewStates.condition)
-
 async def process_condition(message: Message, state: FSMContext):
     await state.update_data(condition=message.text)
     await message.answer("Введите цену товара:", reply_markup=ReplyKeyboardRemove())
@@ -141,6 +168,9 @@ async def process_media(message: Message, state: FSMContext, bot: Bot):
         # Формируем текст объявления
         preview_text = (
             f"Тип изделия: {data['product_type']}\n"
+            f"Вес: {data['weight']}\n"
+            f"Размер: {data['size']}\n"
+            f"Вставки: {data['insertion']}\n"
             f"Состояние: {data['condition']}\n"
             f"Цена: {data['price']}\n"
             f"Проба: {data.get('hallmark', 'нет')}\n"
@@ -202,6 +232,9 @@ async def process_confirmation(message: Message, state: FSMContext, bot: Bot):
                 # Первый медиафайл с подписью
                 caption = (
                     f"Тип изделия: {data['product_type']}\n"
+                    f"Вес: {data['weight']}\n"
+                    f"Размер: {data['size']}\n"
+                    f"Вставки: {data['insertion']}\n"
                     f"Состояние: {data['condition']}\n"
                     f"Цена: {data['price']}\n"
                     f"Проба: {data.get('hallmark', 'нет')}\n"
@@ -226,6 +259,9 @@ async def process_confirmation(message: Message, state: FSMContext, bot: Bot):
             new_order = Order(
                 user_id=message.from_user.id,
                 product_type=data["product_type"],
+                weight=data["weight"],
+                size=data['size'], 
+                insertion=data['insertion'],
                 condition=data["condition"],
                 price=data["price"],
                 hallmark=data.get("hallmark", "нет"),
@@ -318,6 +354,9 @@ async def handle_admin_decision(callback: types.CallbackQuery, bot: Bot, state: 
                     # Первый медиафайл с подписью
                     caption = (
                         f"Тип изделия: {order.product_type}\n"
+                        f"Вес: {order.weight}\n"
+                        f"Размер: {order.size}\n"
+                        f"Вставки: {order.insertion}\n"
                         f"Состояние: {order.condition}\n"
                         f"Цена: {order.price}\n"
                         f"Проба: {order.hallmark}\n"
@@ -391,29 +430,7 @@ async def handle_admin_decision(callback: types.CallbackQuery, bot: Bot, state: 
     finally:
         session.close()  # Закрываем сессию в любом случае
     await callback.answer()
-async def unknown_message(message: Message):
-    if message.from_user.id in Config.ADMIN_IDS:
-        # Сообщение для администратора
-        await message.answer(
-            "Команды администратора:\n"
-            "/ban [user_id] - Заблокировать пользователя\n"
-            "/unban [user_id] - Разблокировать пользователя\n"
-            "@idchatwebhelbiebot - бот для получения id",
-            reply_markup=get_admin_keyboard()
-        )
-    else:
-        # Сообщение для обычного пользователя
-        await message.answer(
-            f"Подпишитесь на наш канал: {Config.CHANNEL_LINK}.\n\n"
-            "Если есть вопросы, обратитесь к администратору: @BogGermes.\n\n"
-            "Этот бот создан для публикации объявлений о продаже золотых изделий. "
-            "Ответственность за передачу денег и товаров мы не несем.\n\n"
-            "Команды:\n"
-            "/добавить - разместить объявление\n"
-            "/удалить - удалить объявление\n"
-            "/редактировать - редактировать объявление",
-            reply_markup=get_main_keyboard()
-        )
+
 
 async def delete_product_command(message: Message, state: FSMContext):
     session = get_db_session()
@@ -636,7 +653,9 @@ async def process_edit_order(message: Message, state: FSMContext):
                     [KeyboardButton(text="Шармы")],
                     [KeyboardButton(text="Броши")],
                     [KeyboardButton(text="Комплекты")],
-                    [KeyboardButton(text="Религиозные изделия")]
+                    [KeyboardButton(text="Религиозные изделия")],
+                    [KeyboardButton(text="Антиквариат")],
+                    [KeyboardButton(text="Монеты")]
                 ],
                 resize_keyboard=True
             )
@@ -650,6 +669,45 @@ async def process_edit_order(message: Message, state: FSMContext):
         if session:
             session.close()  # Закрываем сессию в любом случае
 ############################
+# async def process_edit_product_type(message: Message, state: FSMContext):
+#     session = None
+#     try:
+#         data = await state.get_data()
+#         order_id = data.get("order_id")
+#         session = get_db_session()
+#         order = session.query(Order).filter(Order.id == order_id).first()
+
+#         if not order:
+#             await message.answer("Ошибка: заказ не найден. Начните заново.", reply_markup=get_main_keyboard())
+#             await state.clear()
+#             return
+
+#         if message.text == "Оставить без изменений":
+#             # Берем данные из базы данных
+#             await state.update_data(product_type=order.product_type)
+#             await message.answer("Тип изделия остался без изменений.")
+#         else:
+#             # Обновляем данные в состоянии
+#             await state.update_data(product_type=message.text)
+#             await message.answer("Тип изделия изменен.")
+
+#         # Переходим к следующему шагу (редактирование состояния)
+#         await message.answer(
+#             f"Текущее состояние изделия: {order.condition}\n"
+#             "Введите новое состояние товара или нажмите 'Оставить без изменений':",
+#             reply_markup=ReplyKeyboardMarkup(
+#                 keyboard=[
+#                     [KeyboardButton(text="Оставить без изменений")],
+#                     [KeyboardButton(text="новое")],
+#                     [KeyboardButton(text="б/у")]
+#                 ],
+#                 resize_keyboard=True
+#             )
+#         )
+#         await state.set_state(ReviewStates.edit_condition)
+#     finally:
+#         if session:
+#             session.close()  # Закрываем сессию в любом случае
 async def process_edit_product_type(message: Message, state: FSMContext):
     session = None
     try:
@@ -674,6 +732,117 @@ async def process_edit_product_type(message: Message, state: FSMContext):
 
         # Переходим к следующему шагу (редактирование состояния)
         await message.answer(
+            f"Текущий вес изделия: {order.weight}\n"
+            "Введите новый вес или нажмите 'Оставить без изменений':",
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard=[
+                    [KeyboardButton(text="Оставить без изменений")]
+                ],
+                resize_keyboard=True
+            )
+        )
+        await state.set_state(ReviewStates.edit_weight)
+    finally:
+        if session:
+            session.close()  # Закрываем сессию в любом случае
+async def process_edit_weight(message: Message, state: FSMContext):
+    session = None
+    try:
+        data = await state.get_data()
+        order_id = data.get("order_id")
+        session = get_db_session()
+        order = session.query(Order).filter(Order.id == order_id).first()
+
+        if not order:
+            await message.answer("Ошибка: заказ не найден. Начните заново.", reply_markup=get_main_keyboard())
+            await state.clear()
+            return
+
+        if message.text == "Оставить без изменений":
+            # Берем данные из базы данных
+            await state.update_data(weight=order.weight)
+            await message.answer("Вес товара остался без изменений.")
+        else:
+            # Обновляем данные в состоянии
+            await state.update_data(weight=message.text)
+            await message.answer("Вес товара товара изменен.")
+
+        # Переходим к следующему шагу (редактирование состояния)
+        await message.answer(
+            f"Текущий размер: {order.size}\n"
+            "Введите новый размер товара или нажмите 'Оставить без изменений':",
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard=[
+                    [KeyboardButton(text="Оставить без изменений")],
+                    [KeyboardButton(text="не указан")]
+                ],
+                resize_keyboard=True
+            )
+        )
+        await state.set_state(ReviewStates.edit_size)
+    finally:
+        if session:
+            session.close()  # Закрываем сессию в любом случае
+async def process_edit_size(message: Message, state: FSMContext):
+    session = None
+    try:
+        data = await state.get_data()
+        order_id = data.get("order_id")
+        session = get_db_session()
+        order = session.query(Order).filter(Order.id == order_id).first()
+
+        if not order:
+            await message.answer("Ошибка: заказ не найден. Начните заново.", reply_markup=get_main_keyboard())
+            await state.clear()
+            return
+
+        if message.text == "Оставить без изменений":
+            # Берем данные из базы данных
+            await state.update_data(size=order.size)
+            await message.answer("Размер товара остался без изменений.")
+        else:
+            # Обновляем данные в состоянии
+            await state.update_data(size=message.text)
+            await message.answer("Размер товара изменено.")
+
+        # Переходим к следующему шагу (редактирование цены)
+        await message.answer(
+            f"Текущие вставки: {order.insertion}\n"
+            "Введите новое описание вставок или нажмите 'Оставить без изменений':",
+            reply_markup=ReplyKeyboardMarkup(
+                keyboard=[[KeyboardButton(text="Оставить без изменений")]],
+                resize_keyboard=True
+            )
+        )
+        await state.set_state(ReviewStates.edit_insertion)
+    finally:
+        if session:
+            session.close()  # Закрываем сессию в любом случае
+
+async def process_edit_insertion(message: Message, state: FSMContext):
+    session = None
+    try:
+        data = await state.get_data()
+        order_id = data.get("order_id")
+        session = get_db_session()
+        order = session.query(Order).filter(Order.id == order_id).first()
+
+        if not order:
+            await message.answer("Ошибка: заказ не найден. Начните заново.", reply_markup=get_main_keyboard())
+            await state.clear()
+            return
+
+        if message.text == "Оставить без изменений":
+            # Берем данные из базы данных
+            await state.update_data(insertion=order.insertion)
+            await message.answer("Вставки остались без изменений.")
+        else:
+            # Обновляем данные в состоянии
+            await state.update_data(insertion=message.text)
+            await message.answer("Информация о вставках изменена.")
+
+        # Переходим к следующему шагу (редактирование состояния)
+        await message.answer(
             f"Текущее состояние изделия: {order.condition}\n"
             "Введите новое состояние товара или нажмите 'Оставить без изменений':",
             reply_markup=ReplyKeyboardMarkup(
@@ -689,7 +858,6 @@ async def process_edit_product_type(message: Message, state: FSMContext):
     finally:
         if session:
             session.close()  # Закрываем сессию в любом случае
-
 async def process_edit_condition(message: Message, state: FSMContext):
     session = None
     try:
@@ -725,7 +893,6 @@ async def process_edit_condition(message: Message, state: FSMContext):
     finally:
         if session:
             session.close()  # Закрываем сессию в любом случае
-
 async def process_edit_price(message: Message, state: FSMContext):
     session = None
     try:
@@ -906,6 +1073,9 @@ async def process_edit_contacts(message: Message, state: FSMContext):
         data = await state.get_data()
         preview_text = (
             f"Тип изделия: {data.get('product_type', order.product_type)}\n"
+            f"Вес: {data.get('weight', order.weight)}\n"
+            f"Размер: {data.get('size', order.size)}\n"
+            f"Вставки: {data.get('insertion', order.insertion)}\n"
             f"Состояние: {data.get('condition', order.condition)}\n"
             f"Цена: {data.get('price', order.price)}\n"
             f"Проба: {data.get('hallmark', order.hallmark)}\n"
@@ -943,6 +1113,9 @@ async def process_edit_confirmation(message: Message, state: FSMContext, bot: Bo
 
             # Обновляем данные в базе
             order.product_type = data.get("product_type", order.product_type)
+            order.weight= data.get("weight", order.weight)
+            order.size = data.get("size", order.size)
+            order.insertion = data.get("insertion", order.insertion)
             order.condition = data.get("condition", order.condition)
             order.price = data.get("price", order.price)
             order.hallmark = data.get("hallmark", order.hallmark)
@@ -955,6 +1128,9 @@ async def process_edit_confirmation(message: Message, state: FSMContext, bot: Bo
             # Формируем текст объявления
             caption = (
                 f"Тип изделия: {order.product_type}\n"
+                f"Вес: {order.weight}\n"
+                f"Размер: {order.size}\n"
+                f"Вставки: {order.insertion}\n"
                 f"Состояние: {order.condition}\n"
                 f"Цена: {order.price}\n"
                 f"Проба: {order.hallmark}\n"
@@ -1018,6 +1194,9 @@ def register_user_handlers(dp):
 
     # Обработчики для добавления товара
     dp.message.register(process_product_type, ReviewStates.product_type)
+    dp.message.register(process_weight, ReviewStates.weight)
+    dp.message.register(process_size, ReviewStates.size)
+    dp.message.register(process_insertion, ReviewStates.insertion)
     dp.message.register(process_condition, ReviewStates.condition)
     dp.message.register(process_price, ReviewStates.price)
     dp.message.register(process_hallmark, ReviewStates.hallmark)
@@ -1033,6 +1212,9 @@ def register_user_handlers(dp):
     # Обработчики для редактирования товара
     dp.message.register(process_edit_order, ReviewStates.edit_order)
     dp.message.register(process_edit_product_type, ReviewStates.edit_product_type)
+    dp.message.register(process_edit_weight, ReviewStates.edit_weight)
+    dp.message.register(process_edit_size, ReviewStates.edit_size)
+    dp.message.register(process_edit_insertion, ReviewStates.edit_insertion)
     dp.message.register(process_edit_condition, ReviewStates.edit_condition)
     dp.message.register(process_edit_price, ReviewStates.edit_price)
     dp.message.register(process_edit_hallmark, ReviewStates.edit_hallmark)

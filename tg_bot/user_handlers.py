@@ -454,54 +454,7 @@ async def delete_product_command(message: Message, state: FSMContext):
     finally:
         session.close()  # Закрываем сессию в любом случае
 
-async def process_delete_order(message: Message, state: FSMContext, bot: Bot):
-    session = None
-    try:
-        # Получаем ID заказа из текста сообщения
-        order_id = int(message.text.split("#")[1])
-        session = get_db_session()
-        order = session.query(Order).filter(Order.id == order_id, Order.user_id == message.from_user.id).first()
 
-        if order:
-            # Удаляем все сообщения из канала, если они были опубликованы
-            if order.channel_message_ids:
-                message_ids = order.channel_message_ids.split(",")
-                for msg_id in message_ids:
-                    try:
-                        await bot.delete_message(chat_id=Config.CHANNEL_ID, message_id=int(msg_id))
-                    except Exception as e:
-                        logger.error(f"Ошибка при удалении сообщения из канала: {e}")
-
-            # Удаляем сообщения из чата с администратором, если они были отправлены
-            if order.admin_message_ids:
-                admin_message_ids = order.admin_message_ids.split(",")
-                for msg_id in admin_message_ids:
-                    try:
-                        await bot.delete_message(chat_id=Config.ADMIN_IDS[0], message_id=int(msg_id))
-                    except Exception as e:
-                        logger.error(f"Ошибка при удалении сообщения из чата с администратором: {e}")
-
-            # Удаляем сообщение с кнопками, если оно было отправлено
-            if order.admin_buttons_message_id:
-                try:
-                    await bot.delete_message(chat_id=Config.ADMIN_IDS[0], message_id=order.admin_buttons_message_id)
-                except Exception as e:
-                    logger.error(f"Ошибка при удалении сообщения с кнопками: {e}")
-
-            # Помечаем объявление как неактивное
-            order.is_active = False
-            session.commit()
-
-            await message.answer("Объявление удалено.", reply_markup=get_main_keyboard())
-        else:
-            await message.answer("Объявление не найдено.", reply_markup=get_main_keyboard())
-    except Exception as e:
-        logger.error(f"Ошибка при удалении объявления: {e}")
-        await message.answer("Произошла ошибка при удалении объявления.", reply_markup=get_main_keyboard())
-    finally:
-        if session:
-            session.close()  # Закрываем сессию в любом случае
-        await state.clear()
 async def unknown_message(message: Message):
     if message.from_user.id in Config.ADMIN_IDS:
         # Сообщение для администратора
@@ -557,30 +510,77 @@ async def process_delete_order(message: Message, state: FSMContext, bot: Bot):
         order = session.query(Order).filter(Order.id == order_id, Order.user_id == message.from_user.id).first()
 
         if order:
-            # Удаляем все сообщения из канала, если они были опубликованы
-            if order.channel_message_ids:
-                message_ids = order.channel_message_ids.split(",")
-                for msg_id in message_ids:
-                    try:
-                        await bot.delete_message(chat_id=Config.CHANNEL_ID, message_id=int(msg_id))
-                    except Exception as e:
-                        logger.error(f"Ошибка при удалении сообщения из канала: {e}")
-
-            # Удаляем сообщения из чата с администратором, если они были отправлены
+             # Удаляем сообщения из чата с администратором, если они были отправлены
             if order.admin_message_ids:
                 admin_message_ids = order.admin_message_ids.split(",")
                 for msg_id in admin_message_ids:
                     try:
                         await bot.delete_message(chat_id=Config.ADMIN_IDS[0], message_id=int(msg_id))
                     except Exception as e:
-                        logger.error(f"Ошибка при удалении сообщения из чата с администратором: {e}")
+                        logger.error(f"псевдо Ошибка при удалении сообщения из чата с администратором: {e}")
 
             # Удаляем сообщение с кнопками, если оно было отправлено
             if order.admin_buttons_message_id:
                 try:
                     await bot.delete_message(chat_id=Config.ADMIN_IDS[0], message_id=order.admin_buttons_message_id)
                 except Exception as e:
-                    logger.error(f"Ошибка при удалении сообщения с кнопками: {e}")
+                    logger.error(f"псевдо Ошибка при удалении сообщения с кнопками: {e}")
+            # Удаляем все сообщения из канала, если они были опубликованы
+            if order.channel_message_ids:
+                try:
+
+                    message_ids = order.channel_message_ids.split(",")
+
+                    try:
+                        # raise Exception("TEST_ERROR: Message can't be deleted")
+                        await bot.delete_message(chat_id=Config.CHANNEL_ID, message_id=int(message_ids[0]))
+                    except Exception as e:
+                        if "message can't be deleted" in str(e):
+                        # if "TEST_ERROR" in str(e):
+
+                            # Если сообщение нельзя удалить, редактируем его
+                            await bot.edit_message_caption(
+                                chat_id=Config.CHANNEL_ID,
+                                message_id=int(message_ids[0]),
+                                caption="Объявление не актуально"
+                            )
+                            # Формируем ссылку на сообщение
+                            message_link = f"https://t.me/c/{str(Config.CHANNEL_ID).replace('-100', '')}/{message_ids[0]}"
+                            
+                            # Отправляем администратору запрос на подтверждение
+                            admin_id = Config.ADMIN_IDS[0]  # Берем первого администратора
+                            await bot.send_message(
+                                chat_id=admin_id,
+                                text=f"Подтвердите удаление объявления: {message_link}\n"
+                                    f"ID объявления: #{order_id}",
+                                    reply_markup=get_admin_keyboard()
+                            )
+                            await message.answer(f"Объявление #{order_id} успешно удалено из канала.", reply_markup=get_main_keyboard())
+                            order.is_active = 0
+                            session.commit()
+
+                            # await message.answer(
+                            #     f"Сообщение #{order_id} старше 48 часов и не может быть удалено автоматически. "
+                            #     "Текст изменен на 'Объявление не актуально'. Администратору отправлен запрос на ручное удаление.",
+                            #     reply_markup=get_admin_keyboard()
+                            # )
+                            return
+                        else:
+                            raise e  # Если это другая ошибка - пробрасываем дальше
+                    
+                    # Удаляем остальные сообщения (медиа) - если есть
+                    for msg_id in message_ids[1:]:
+                        try:
+                            await bot.delete_message(chat_id=Config.CHANNEL_ID, message_id=int(msg_id))
+                        except:
+                            pass  # Игнорируем ошибки при удалении медиа
+                    order.is_active = 0
+                    session.commit()
+                except Exception as e:
+                    await message.answer(f"Ошибка при удалении объявления #{order_id}. Обратитесь к администратору.", reply_markup=get_main_keyboard())
+                    return
+
+           
 
             # Помечаем объявление как неактивное
             order.is_active = False
